@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WBS Tool</title>
+<style>
+  :root {
+    --bg: #f4f6f9;
+    --panel: #ffffff;
+    --border: #d8dee6;
+    --text: #2b3440;
+    --muted: #7a8594;
+    --accent: #3b82f6;
+    --accent-dark: #2563eb;
+    --bar: #60a5fa;
+    --bar-done: #22c55e;
+    --today: #ef4444;
+    --row-hover: #eef4ff;
+    --header-bg: #1f2937;
+    --weekend: #f1f4f8;
+    --holiday-bg: #fdecef;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", "Meiryo", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+  }
+  header.app {
+    background: var(--header-bg);
+    color: #fff;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+  header.app h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .5px; }
+  header.app .spacer { flex: 1; }
+  .toolbar { display: flex; gap: 6px; flex-wrap: wrap; }
+  button {
+    font-family: inherit;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    padding: 5px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background .12s, border-color .12s;
+  }
+  button:hover { background: #f0f3f7; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent-dark); }
+  button.primary:hover { background: var(--accent-dark); }
+  button.ghost { background: transparent; color: #cbd5e1; border-color: #475569; }
+  button.ghost:hover { background: #374151; color: #fff; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+
+  .layout { display: flex; height: calc(100vh - 49px); }
+  .table-wrap, .gantt-wrap { overflow: auto; }
+  .table-wrap {
+    flex: 0 0 auto;
+    width: 640px;
+    min-width: 360px;
+    border-right: 2px solid var(--border);
+    background: var(--panel);
+    resize: horizontal;
+  }
+  .gantt-wrap { flex: 1; background: var(--panel); position: relative; }
+
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid var(--border); padding: 0; height: 30px; }
+  thead th {
+    background: #eaeef3;
+    font-weight: 600;
+    color: var(--muted);
+    font-size: 11px;
+    padding: 4px 6px;
+    text-align: center;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    white-space: nowrap;
+  }
+  tbody td { font-size: 12px; }
+  tbody tr:hover { background: var(--row-hover); }
+  tbody tr.selected { background: #dbeafe !important; }
+  .cell-input, .cell-select {
+    width: 100%; height: 100%; border: none; background: transparent;
+    font-family: inherit; font-size: 12px; padding: 4px 6px; color: var(--text);
+    outline: none;
+  }
+  .cell-input:focus, .cell-select:focus { background: #fffbe6; box-shadow: inset 0 0 0 2px var(--accent); }
+  .cell-select { -webkit-appearance: none; appearance: none; cursor: pointer; }
+  td.wbs { text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 11px; white-space: nowrap; }
+  td.center { text-align: center; }
+  td.progress-cell { position: relative; }
+  .name-wrap { display: flex; align-items: center; height: 100%; }
+  .toggle {
+    width: 16px; text-align: center; cursor: pointer; color: var(--muted);
+    user-select: none; flex: 0 0 16px;
+  }
+  .toggle.empty { visibility: hidden; }
+  .name-input { flex: 1; }
+  tr[data-level="0"] .name-input { font-weight: 700; }
+  tr[data-level="1"] .name-input { font-weight: 600; }
+
+  .progress-bar-bg { position: absolute; inset: 0; pointer-events: none; }
+  .progress-bar-fill { height: 100%; background: rgba(34,197,94,.18); }
+  .progress-text { position: relative; text-align: center; font-variant-numeric: tabular-nums; }
+
+  .status-pill { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; }
+  .st-notstarted { background: #e5e7eb; color: #4b5563; }
+  .st-inprogress { background: #dbeafe; color: #1d4ed8; }
+  .st-done { background: #dcfce7; color: #15803d; }
+  .st-hold { background: #fef3c7; color: #b45309; }
+
+  /* Gantt */
+  .gantt-header { display: flex; position: sticky; top: 0; z-index: 20; background: #eaeef3; }
+  .gantt-month { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    font-size: 11px; font-weight: 600; color: var(--muted); text-align: center; line-height: 20px; height: 21px; }
+  .gantt-days { display: flex; }
+  .gantt-day {
+    border-right: 1px solid #e6eaef; border-bottom: 1px solid var(--border);
+    text-align: center; font-size: 10px; color: var(--muted); line-height: 14px; height: 30px;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .gantt-day .dow { font-size: 9px; }
+  .gantt-day.weekend { background: var(--weekend); }
+  .gantt-day.sun { color: #dc2626; }
+  .gantt-day.sat { color: #2563eb; }
+  .gantt-body { position: relative; }
+  .gantt-row { display: flex; height: 30px; border-bottom: 1px solid #eef1f5; position: relative; }
+  .gantt-row:hover { background: var(--row-hover); }
+  .gantt-row.selected { background: #dbeafe; }
+  .gantt-cell { border-right: 1px solid #f0f2f5; flex: 0 0 auto; }
+  .gantt-cell.weekend { background: var(--weekend); }
+  .gantt-bar {
+    position: absolute; top: 6px; height: 18px; border-radius: 4px;
+    background: var(--bar); box-shadow: 0 1px 2px rgba(0,0,0,.15);
+    display: flex; align-items: center; overflow: visible; cursor: default;
+  }
+  .gantt-bar.summary { background: #475569; height: 10px; top: 10px; border-radius: 2px; }
+  .gantt-bar .fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--bar-done); border-radius: 4px; opacity: .85; }
+  .gantt-bar .label { position: absolute; left: calc(100% + 6px); white-space: nowrap; font-size: 11px; color: var(--muted); line-height: 18px; }
+  .gantt-milestone { position: absolute; top: 7px; width: 16px; height: 16px; background: #f59e0b; transform: rotate(45deg); border-radius: 2px; }
+  .today-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--today); z-index: 5; pointer-events: none; }
+  .today-line::after { content: "今日"; position: absolute; top: 0; left: 3px; font-size: 9px; color: var(--today); background: #fff; padding: 0 2px; }
+
+  .empty-state { padding: 40px; text-align: center; color: var(--muted); }
+  .stats { font-size: 12px; color: #cbd5e1; display: flex; gap: 14px; align-items: center; }
+  .stats b { color: #fff; }
+  input[type=file] { display: none; }
+  .hint { font-size: 11px; color: var(--muted); padding: 6px 10px; }
+  .row-actions { display: flex; gap: 2px; justify-content: center; }
+  .row-actions button { padding: 2px 5px; font-size: 11px; line-height: 1; }
+</style>
+</head>
+<body>
+<header class="app">
+  <h1>📋 WBS Tool</h1>
+  <div class="toolbar">
+    <button class="primary" id="btnAddRoot">＋ 大項目</button>
+    <button id="btnAddChild">子タスク</button>
+    <button id="btnAddSibling">同階層</button>
+    <button id="btnIndent" title="右にインデント">→</button>
+    <button id="btnOutdent" title="左にインデント">←</button>
+    <button id="btnUp" title="上へ">↑</button>
+    <button id="btnDown" title="下へ">↓</button>
+    <button id="btnDelete" title="削除">🗑</button>
+  </div>
+  <div class="spacer"></div>
+  <div class="stats">
+    <span>タスク <b id="statCount">0</b></span>
+    <span>進捗 <b id="statProgress">0%</b></span>
+  </div>
+  <div class="toolbar">
+    <button class="ghost" id="btnExport">JSON出力</button>
+    <button class="ghost" id="btnCsv">CSV出力</button>
+    <button class="ghost" id="btnImport">読込</button>
+    <button class="ghost" id="btnSample">サンプル</button>
+    <button class="ghost" id="btnClear">全消去</button>
+    <input type="file" id="fileInput" accept=".json">
+  </div>
+</header>
+
+<div class="layout">
+  <div class="table-wrap">
+    <table id="wbsTable">
+      <thead>
+        <tr>
+          <th style="width:46px">No.</th>
+          <th>タスク名</th>
+          <th style="width:70px">担当</th>
+          <th style="width:88px">開始</th>
+          <th style="width:88px">終了</th>
+          <th style="width:52px">進捗</th>
+          <th style="width:84px">状態</th>
+          <th style="width:54px"></th>
+        </tr>
+      </thead>
+      <tbody id="wbsBody"></tbody>
+    </table>
+    <div class="hint">行をクリックで選択。日付未入力やマイルストーン（開始＝終了）にも対応。データはブラウザに自動保存されます。</div>
+  </div>
+  <div class="gantt-wrap" id="ganttWrap">
+    <div id="ganttHeader" class="gantt-header"></div>
+    <div id="ganttBody" class="gantt-body"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const STORAGE_KEY = "wbs-tool-data-v1";
+const DAY_W = 26; // px per day
+const STATUS = {
+  notstarted: { label: "未着手", cls: "st-notstarted" },
+  inprogress: { label: "進行中", cls: "st-inprogress" },
+  done:       { label: "完了",   cls: "st-done" },
+  hold:       { label: "保留",   cls: "st-hold" },
+};
+
+let tasks = [];        // {id, level, name, assignee, start, end, progress, status, collapsed}
+let selectedId = null;
+let uid = 1;
+
+/* ---------- persistence ---------- */
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ uid, tasks }));
+}
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const d = JSON.parse(raw);
+      tasks = d.tasks || [];
+      uid = d.uid || (tasks.reduce((m,t)=>Math.max(m,t.id),0) + 1);
+      return true;
+    }
+  } catch (e) { console.warn(e); }
+  return false;
+}
+
+/* ---------- helpers ---------- */
+function newTask(level) {
+  return { id: uid++, level: level||0, name: "", assignee: "",
+           start: "", end: "", progress: 0, status: "notstarted", collapsed: false };
+}
+function parseDate(s) {
+  if (!s) return null;
+  const d = new Date(s + "T00:00:00");
+  return isNaN(d) ? null : d;
+}
+function fmtDate(d) {
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+function daysBetween(a, b) { return Math.round((b - a) / 86400000); }
+function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate()+n); return r; }
+
+// children = following rows with greater level until a row of <= level
+function hasChildren(idx) {
+  return idx+1 < tasks.length && tasks[idx+1].level > tasks[idx].level;
+}
+function childrenRange(idx) {
+  const lvl = tasks[idx].level;
+  let end = idx+1;
+  while (end < tasks.length && tasks[end].level > lvl) end++;
+  return [idx+1, end]; // [start, endExclusive)
+}
+function isHiddenByCollapse(idx) {
+  // hidden if any ancestor before it is collapsed
+  let need = tasks[idx].level;
+  for (let i = idx-1; i >= 0 && need > 0; i--) {
+    if (tasks[i].level < need) {
+      if (tasks[i].collapsed) return true;
+      need = tasks[i].level;
+    }
+  }
+  return false;
+}
+
+// roll-up summary computed values for parent rows
+function summaryOf(idx) {
+  if (!hasChildren(idx)) return null;
+  const [s, e] = childrenRange(idx);
+  let minStart = null, maxEnd = null, sumDur = 0, sumDone = 0, leaves = 0;
+  for (let i = s; i < e; i++) {
+    if (hasChildren(i)) continue; // only leaves
+    leaves++;
+    const ds = parseDate(tasks[i].start), de = parseDate(tasks[i].end);
+    if (ds && (!minStart || ds < minStart)) minStart = ds;
+    if (de && (!maxEnd || de > maxEnd)) maxEnd = de;
+    const dur = (ds && de) ? Math.max(1, daysBetween(ds, de)+1) : 1;
+    sumDur += dur;
+    sumDone += dur * (Number(tasks[i].progress)||0) / 100;
+  }
+  const progress = sumDur > 0 ? Math.round(sumDone / sumDur * 100) : 0;
+  return { minStart, maxEnd, progress };
+}
+
+function wbsNumber(idx) {
+  // compute hierarchical numbering like 1.2.3
+  const counters = [];
+  for (let i = 0; i <= idx; i++) {
+    const lvl = tasks[i].level;
+    counters.length = lvl + 1;
+    counters[lvl] = (counters[lvl] || 0) + 1;
+    for (let j = lvl+1; j < counters.length; j++) counters[j] = 0;
+  }
+  return counters.filter((_,i)=> i<=tasks[idx].level).join(".");
+}
+
+/* ---------- date range for gantt ---------- */
+function dateRange() {
+  let min = null, max = null;
+  tasks.forEach(t => {
+    const s = parseDate(t.start), e = parseDate(t.end);
+    if (s && (!min || s < min)) min = s;
+    if (e && (!max || e > max)) max = e;
+    if (s && (!max || s > max)) max = s;
+    if (e && (!min || e < min)) min = e;
+  });
+  const today = new Date(); today.setHours(0,0,0,0);
+  if (!min) min = addDays(today, -2);
+  if (!max) max = addDays(today, 14);
+  if (today < min) min = today;
+  if (today > max) max = today;
+  min = addDays(min, -3);
+  max = addDays(max, 5);
+  return [min, max];
+}
+
+/* ---------- rendering ---------- */
+function render() {
+  renderTable();
+  renderGantt();
+  renderStats();
+  save();
+}
+
+function renderTable() {
+  const body = document.getElementById("wbsBody");
+  body.innerHTML = "";
+  if (tasks.length === 0) {
+    body.innerHTML = `<tr><td colspan="8"><div class="empty-state">タスクがありません。「＋ 大項目」またはサンプルから始めましょう。</div></td></tr>`;
+    return;
+  }
+  tasks.forEach((t, idx) => {
+    if (isHiddenByCollapse(idx)) return;
+    const tr = document.createElement("tr");
+    tr.dataset.id = t.id;
+    tr.dataset.level = t.level;
+    if (t.id === selectedId) tr.classList.add("selected");
+    tr.onclick = () => { selectedId = t.id; renderTable(); renderGantt(); };
+
+    const summary = summaryOf(idx);
+    const isParent = hasChildren(idx);
+
+    // No.
+    const tdNo = document.createElement("td");
+    tdNo.className = "wbs";
+    tdNo.textContent = wbsNumber(idx);
+    tr.appendChild(tdNo);
+
+    // Name + toggle
+    const tdName = document.createElement("td");
+    const wrap = document.createElement("div");
+    wrap.className = "name-wrap";
+    wrap.style.paddingLeft = (t.level * 16) + "px";
+    const toggle = document.createElement("span");
+    toggle.className = "toggle" + (isParent ? "" : " empty");
+    toggle.textContent = isParent ? (t.collapsed ? "▶" : "▼") : "•";
+    toggle.onclick = (e) => { e.stopPropagation(); t.collapsed = !t.collapsed; render(); };
+    wrap.appendChild(toggle);
+    const name = document.createElement("input");
+    name.className = "cell-input name-input";
+    name.value = t.name;
+    name.placeholder = "タスク名";
+    name.oninput = () => { t.name = name.value; renderGantt(); save(); };
+    wrap.appendChild(name);
+    tdName.appendChild(wrap);
+    tr.appendChild(tdName);
+
+    // Assignee
+    const tdAss = document.createElement("td");
+    const ass = document.createElement("input");
+    ass.className = "cell-input";
+    ass.value = t.assignee;
+    ass.oninput = () => { t.assignee = ass.value; renderGantt(); save(); };
+    tdAss.appendChild(ass);
+    tr.appendChild(tdAss);
+
+    // Start
+    tr.appendChild(dateCell(t, "start", summary && summary.minStart ? fmtDate(summary.minStart) : ""));
+    // End
+    tr.appendChild(dateCell(t, "end", summary && summary.maxEnd ? fmtDate(summary.maxEnd) : ""));
+
+    // Progress
+    const tdProg = document.createElement("td");
+    tdProg.className = "progress-cell center";
+    const pv = isParent && summary ? summary.progress : (Number(t.progress)||0);
+    const bg = document.createElement("div");
+    bg.className = "progress-bar-bg";
+    bg.innerHTML = `<div class="progress-bar-fill" style="width:${pv}%"></div>`;
+    tdProg.appendChild(bg);
+    if (isParent) {
+      const span = document.createElement("div");
+      span.className = "progress-text";
+      span.textContent = pv + "%";
+      tdProg.appendChild(span);
+    } else {
+      const pin = document.createElement("input");
+      pin.className = "cell-input progress-text";
+      pin.style.textAlign = "center";
+      pin.type = "number"; pin.min = 0; pin.max = 100; pin.step = 5;
+      pin.value = t.progress;
+      pin.oninput = () => {
+        let v = Math.max(0, Math.min(100, Number(pin.value)||0));
+        t.progress = v;
+        if (v === 100) t.status = "done";
+        else if (v > 0 && t.status === "notstarted") t.status = "inprogress";
+        renderTable(); renderGantt(); save();
+      };
+      tdProg.appendChild(pin);
+    }
+    tr.appendChild(tdProg);
+
+    // Status
+    const tdSt = document.createElement("td");
+    tdSt.className = "center";
+    if (isParent) {
+      tdSt.innerHTML = `<span class="status-pill ${STATUS[derivedStatus(summary.progress)].cls}">${STATUS[derivedStatus(summary.progress)].label}</span>`;
+    } else {
+      const sel = document.createElement("select");
+      sel.className = "cell-select";
+      Object.entries(STATUS).forEach(([k,v]) => {
+        const o = document.createElement("option");
+        o.value = k; o.textContent = v.label;
+        if (k === t.status) o.selected = true;
+        sel.appendChild(o);
+      });
+      sel.onchange = () => {
+        t.status = sel.value;
+        if (t.status === "done") t.progress = 100;
+        else if (t.status === "notstarted") t.progress = 0;
+        renderTable(); renderGantt(); save();
+      };
+      tdSt.appendChild(sel);
+    }
+    tr.appendChild(tdSt);
+
+    // Row actions
+    const tdAct = document.createElement("td");
+    tdAct.className = "center";
+    const acts = document.createElement("div");
+    acts.className = "row-actions";
+    const bChild = mkBtn("＋", "子タスク追加", (e)=>{ e.stopPropagation(); addChildOf(idx); });
+    const bDel = mkBtn("✕", "削除", (e)=>{ e.stopPropagation(); deleteTask(idx); });
+    acts.appendChild(bChild); acts.appendChild(bDel);
+    tdAct.appendChild(acts);
+    tr.appendChild(tdAct);
+
+    body.appendChild(tr);
+  });
+}
+
+function derivedStatus(p) {
+  if (p >= 100) return "done";
+  if (p > 0) return "inprogress";
+  return "notstarted";
+}
+function mkBtn(txt, title, fn) {
+  const b = document.createElement("button");
+  b.textContent = txt; b.title = title; b.onclick = fn;
+  return b;
+}
+function dateCell(t, field, placeholder) {
+  const td = document.createElement("td");
+  const inp = document.createElement("input");
+  inp.className = "cell-input";
+  inp.type = "date";
+  inp.value = t[field] || "";
+  inp.placeholder = placeholder;
+  if (!t[field] && placeholder) inp.title = "（子から自動: " + placeholder + "）";
+  inp.oninput = () => { t[field] = inp.value; render(); };
+  td.appendChild(inp);
+  return td;
+}
+
+/* ---------- gantt ---------- */
+function renderGantt() {
+  const header = document.getElementById("ganttHeader");
+  const gbody = document.getElementById("ganttBody");
+  header.innerHTML = ""; gbody.innerHTML = "";
+  if (tasks.length === 0) return;
+
+  const [min, max] = dateRange();
+  const totalDays = daysBetween(min, max) + 1;
+  const width = totalDays * DAY_W;
+  header.style.width = width + "px";
+  gbody.style.width = width + "px";
+
+  // month row
+  const monthRow = document.createElement("div");
+  monthRow.style.display = "flex";
+  let mStart = 0;
+  for (let i = 1; i <= totalDays; i++) {
+    const cur = addDays(min, i-1);
+    const next = i < totalDays ? addDays(min, i) : null;
+    const isLast = i === totalDays;
+    const monthChanged = next && next.getMonth() !== cur.getMonth();
+    if (monthChanged || isLast) {
+      const span = (i - mStart);
+      const m = document.createElement("div");
+      m.className = "gantt-month";
+      m.style.width = (span * DAY_W) + "px";
+      m.textContent = cur.getFullYear() + "/" + (cur.getMonth()+1);
+      monthRow.appendChild(m);
+      mStart = i;
+    }
+  }
+  const headWrap = document.createElement("div");
+  headWrap.style.width = width + "px";
+  headWrap.appendChild(monthRow);
+
+  // day row
+  const dayRow = document.createElement("div");
+  dayRow.className = "gantt-days";
+  const dows = ["日","月","火","水","木","金","土"];
+  for (let i = 0; i < totalDays; i++) {
+    const d = addDays(min, i);
+    const dow = d.getDay();
+    const cell = document.createElement("div");
+    cell.className = "gantt-day" + (dow===0||dow===6 ? " weekend" : "") + (dow===0?" sun":dow===6?" sat":"");
+    cell.style.width = DAY_W + "px";
+    cell.innerHTML = `<div>${d.getDate()}</div><div class="dow">${dows[dow]}</div>`;
+    dayRow.appendChild(cell);
+  }
+  headWrap.appendChild(dayRow);
+  header.appendChild(headWrap);
+
+  // today line offset
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayOffset = daysBetween(min, today);
+
+  // rows
+  tasks.forEach((t, idx) => {
+    if (isHiddenByCollapse(idx)) return;
+    const row = document.createElement("div");
+    row.className = "gantt-row" + (t.id === selectedId ? " selected" : "");
+    row.style.width = width + "px";
+    row.dataset.id = t.id;
+    row.onclick = () => { selectedId = t.id; renderTable(); renderGantt(); };
+
+    // background day cells (weekend shading)
+    for (let i = 0; i < totalDays; i++) {
+      const d = addDays(min, i);
+      const dow = d.getDay();
+      const c = document.createElement("div");
+      c.className = "gantt-cell" + (dow===0||dow===6 ? " weekend" : "");
+      c.style.width = DAY_W + "px";
+      row.appendChild(c);
+    }
+
+    const isParent = hasChildren(idx);
+    const summary = isParent ? summaryOf(idx) : null;
+    let s = parseDate(t.start), e = parseDate(t.end);
+    let prog = Number(t.progress)||0;
+    if (isParent && summary) {
+      s = summary.minStart; e = summary.maxEnd; prog = summary.progress;
+    }
+
+    if (s || e) {
+      if (!s) s = e; if (!e) e = s;
+      const startOff = daysBetween(min, s);
+      const dur = Math.max(1, daysBetween(s, e) + 1);
+      const isMilestone = !isParent && daysBetween(s, e) === 0 && t.start && t.end;
+      if (isMilestone) {
+        const ms = document.createElement("div");
+        ms.className = "gantt-milestone";
+        ms.style.left = (startOff * DAY_W + DAY_W/2 - 8) + "px";
+        const lbl = document.createElement("div");
+        lbl.className = "label"; lbl.style.left = (startOff*DAY_W + DAY_W) + "px";
+        row.appendChild(ms);
+      } else {
+        const bar = document.createElement("div");
+        bar.className = "gantt-bar" + (isParent ? " summary" : "");
+        bar.style.left = (startOff * DAY_W + 2) + "px";
+        bar.style.width = (dur * DAY_W - 4) + "px";
+        if (!isParent) {
+          const fill = document.createElement("div");
+          fill.className = "fill";
+          fill.style.width = prog + "%";
+          bar.appendChild(fill);
+        }
+        const lbl = document.createElement("div");
+        lbl.className = "label";
+        lbl.textContent = (t.name||"(無題)") + (t.assignee ? " @"+t.assignee : "") + " " + prog + "%";
+        bar.appendChild(lbl);
+        bar.title = `${t.name}\n${t.start||"?"} 〜 ${t.end||"?"} (${dur}日) ${prog}%`;
+        row.appendChild(bar);
+      }
+    }
+    gbody.appendChild(row);
+  });
+
+  // today line
+  if (todayOffset >= 0 && todayOffset < totalDays) {
+    const line = document.createElement("div");
+    line.className = "today-line";
+    line.style.left = (todayOffset * DAY_W + DAY_W/2) + "px";
+    line.style.height = gbody.scrollHeight + "px";
+    gbody.appendChild(line);
+  }
+}
+
+function renderStats() {
+  document.getElementById("statCount").textContent = tasks.length;
+  const leaves = tasks.filter((_,i)=>!hasChildren(i));
+  let sumDur=0, sumDone=0;
+  leaves.forEach(t=>{
+    const ds=parseDate(t.start), de=parseDate(t.end);
+    const dur = (ds&&de)?Math.max(1,daysBetween(ds,de)+1):1;
+    sumDur+=dur; sumDone+=dur*(Number(t.progress)||0)/100;
+  });
+  const p = sumDur>0?Math.round(sumDone/sumDur*100):0;
+  document.getElementById("statProgress").textContent = p + "%";
+}
+
+/* ---------- operations ---------- */
+function selectedIndex() {
+  if (selectedId == null) return -1;
+  return tasks.findIndex(t => t.id === selectedId);
+}
+function addRoot() {
+  const t = newTask(0);
+  tasks.push(t); selectedId = t.id; render();
+}
+function addChildOf(idx) {
+  const parent = tasks[idx];
+  const [, end] = childrenRange(idx);
+  const t = newTask(parent.level + 1);
+  parent.collapsed = false;
+  tasks.splice(end, 0, t);
+  selectedId = t.id; render();
+}
+function addChild() {
+  const idx = selectedIndex();
+  if (idx < 0) return addRoot();
+  addChildOf(idx);
+}
+function addSibling() {
+  const idx = selectedIndex();
+  if (idx < 0) return addRoot();
+  const [, end] = childrenRange(idx);
+  const t = newTask(tasks[idx].level);
+  tasks.splice(end, 0, t);
+  selectedId = t.id; render();
+}
+function deleteTask(idx) {
+  if (idx < 0) return;
+  const [s, e] = childrenRange(idx);
+  const count = e - idx;
+  if (count > 1 && !confirm(`このタスクと子タスク${count-1}件を削除します。よろしいですか？`)) return;
+  tasks.splice(idx, count);
+  selectedId = null; render();
+}
+function indent() {
+  const idx = selectedIndex();
+  if (idx <= 0) return;
+  if (tasks[idx].level > tasks[idx-1].level) return; // already max
+  const delta = 1;
+  const [s, e] = childrenRange(idx);
+  for (let i = idx; i < e; i++) tasks[i].level += delta;
+  render();
+}
+function outdent() {
+  const idx = selectedIndex();
+  if (idx < 0 || tasks[idx].level === 0) return;
+  const [s, e] = childrenRange(idx);
+  for (let i = idx; i < e; i++) tasks[i].level -= 1;
+  render();
+}
+function moveUp() {
+  const idx = selectedIndex();
+  if (idx <= 0) return;
+  const [s, e] = childrenRange(idx);      // block to move = [idx, e)
+  // find previous sibling/block start at same or lower boundary
+  let p = idx - 1;
+  while (p > 0 && tasks[p].level > tasks[idx].level) p--;
+  if (tasks[p].level < tasks[idx].level) return; // no sibling above within parent
+  const block = tasks.splice(idx, e - idx);
+  tasks.splice(p, 0, ...block);
+  render();
+}
+function moveDown() {
+  const idx = selectedIndex();
+  if (idx < 0) return;
+  const [s, e] = childrenRange(idx);
+  if (e >= tasks.length) return;
+  if (tasks[e].level < tasks[idx].level) return; // next is outside parent
+  const [, e2] = childrenRange(e);            // next block [e, e2)
+  const block = tasks.splice(idx, e - idx);
+  const insertAt = e - (e - idx) + (e2 - e);
+  tasks.splice(insertAt, 0, ...block);
+  render();
+}
+
+/* ---------- import/export ---------- */
+function exportJSON() {
+  const blob = new Blob([JSON.stringify({ uid, tasks }, null, 2)], { type: "application/json" });
+  downloadBlob(blob, "wbs-" + fmtDate(new Date()) + ".json");
+}
+function exportCSV() {
+  const head = ["No","階層","タスク名","担当","開始","終了","進捗%","状態"];
+  const lines = [head.join(",")];
+  tasks.forEach((t, idx) => {
+    const sum = hasChildren(idx) ? summaryOf(idx) : null;
+    const start = t.start || (sum&&sum.minStart?fmtDate(sum.minStart):"");
+    const end = t.end || (sum&&sum.maxEnd?fmtDate(sum.maxEnd):"");
+    const prog = sum ? sum.progress : t.progress;
+    const st = sum ? STATUS[derivedStatus(sum.progress)].label : STATUS[t.status].label;
+    const row = [wbsNumber(idx), t.level, t.name, t.assignee, start, end, prog, st]
+      .map(v => `"${String(v).replace(/"/g,'""')}"`);
+    lines.push(row.join(","));
+  });
+  const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  downloadBlob(blob, "wbs-" + fmtDate(new Date()) + ".csv");
+}
+function downloadBlob(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+}
+function importJSON(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const d = JSON.parse(reader.result);
+      if (!Array.isArray(d.tasks)) throw new Error("形式が不正です");
+      tasks = d.tasks;
+      uid = d.uid || (tasks.reduce((m,t)=>Math.max(m,t.id),0)+1);
+      selectedId = null; render();
+    } catch (e) { alert("読込に失敗しました: " + e.message); }
+  };
+  reader.readAsText(file);
+}
+
+/* ---------- sample ---------- */
+function loadSample() {
+  if (tasks.length && !confirm("現在のデータを置き換えてサンプルを読み込みますか？")) return;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const d = n => fmtDate(addDays(today, n));
+  uid = 1;
+  const mk = (level,name,assignee,start,end,progress,status) =>
+    ({ id: uid++, level, name, assignee, start, end, progress, status, collapsed:false });
+  tasks = [
+    mk(0,"要件定義","",d(-5),d(3),0,"inprogress"),
+    mk(1,"ヒアリング","佐藤",d(-5),d(-2),100,"done"),
+    mk(1,"要件定義書作成","佐藤",d(-2),d(2),60,"inprogress"),
+    mk(1,"レビュー","鈴木",d(3),d(3),0,"notstarted"),
+    mk(0,"設計","",d(3),d(12),0,"notstarted"),
+    mk(1,"基本設計","田中",d(3),d(7),0,"notstarted"),
+    mk(1,"詳細設計","田中",d(8),d(12),0,"notstarted"),
+    mk(0,"実装","",d(12),d(25),0,"notstarted"),
+    mk(1,"フロントエンド","山田",d(12),d(20),0,"notstarted"),
+    mk(1,"バックエンド","高橋",d(12),d(22),0,"notstarted"),
+    mk(1,"結合","山田",d(23),d(25),0,"notstarted"),
+    mk(0,"テスト・リリース","",d(25),d(30),0,"notstarted"),
+    mk(1,"テスト","鈴木",d(25),d(29),0,"notstarted"),
+    mk(1,"リリース","佐藤",d(30),d(30),0,"notstarted"),
+  ];
+  selectedId = null; render();
+}
+
+/* ---------- events ---------- */
+document.getElementById("btnAddRoot").onclick = addRoot;
+document.getElementById("btnAddChild").onclick = addChild;
+document.getElementById("btnAddSibling").onclick = addSibling;
+document.getElementById("btnIndent").onclick = indent;
+document.getElementById("btnOutdent").onclick = outdent;
+document.getElementById("btnUp").onclick = moveUp;
+document.getElementById("btnDown").onclick = moveDown;
+document.getElementById("btnDelete").onclick = () => deleteTask(selectedIndex());
+document.getElementById("btnExport").onclick = exportJSON;
+document.getElementById("btnCsv").onclick = exportCSV;
+document.getElementById("btnSample").onclick = loadSample;
+document.getElementById("btnImport").onclick = () => document.getElementById("fileInput").click();
+document.getElementById("fileInput").onchange = (e) => { if (e.target.files[0]) importJSON(e.target.files[0]); e.target.value=""; };
+document.getElementById("btnClear").onclick = () => {
+  if (confirm("すべてのタスクを削除します。よろしいですか？")) { tasks=[]; selectedId=null; render(); }
+};
+// sync gantt vertical scroll roughly with table (optional: keep simple)
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  if (selectedIndex() < 0) return;
+  if (e.key === "Tab" && !e.shiftKey) { e.preventDefault(); indent(); }
+  else if (e.key === "Tab" && e.shiftKey) { e.preventDefault(); outdent(); }
+});
+
+/* ---------- init ---------- */
+if (!load()) loadSample();
+render();
+</script>
+</body>
+</html>
