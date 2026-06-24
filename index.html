@@ -150,6 +150,8 @@
   .gantt-bar .fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--bar-done); border-radius: 4px; opacity: .85; }
   .gantt-bar .label { position: absolute; left: calc(100% + 6px); white-space: nowrap; font-size: 11px; color: var(--muted); line-height: 18px; }
   .gantt-milestone { position: absolute; top: 7px; width: 16px; height: 16px; background: #f59e0b; transform: rotate(45deg); border-radius: 2px; }
+  .gantt-milestone-label { position: absolute; top: 0; height: 30px; line-height: 30px; font-size: 11px; color: var(--muted); white-space: nowrap; pointer-events: none; }
+  .derived-date { padding: 4px 6px; text-align: center; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
   .today-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--today); z-index: 5; pointer-events: none; }
   .today-line::after { content: "今日"; position: absolute; top: 0; left: 3px; font-size: 9px; color: var(--today); background: #fff; padding: 0 2px; }
 
@@ -397,9 +399,9 @@ function renderTable() {
     tr.appendChild(tdAss);
 
     // Start
-    tr.appendChild(dateCell(t, "start", summary && summary.minStart ? fmtDate(summary.minStart) : ""));
+    tr.appendChild(dateCell(t, "start", isParent, summary && summary.minStart ? fmtDate(summary.minStart) : ""));
     // End
-    tr.appendChild(dateCell(t, "end", summary && summary.maxEnd ? fmtDate(summary.maxEnd) : ""));
+    tr.appendChild(dateCell(t, "end", isParent, summary && summary.maxEnd ? fmtDate(summary.maxEnd) : ""));
 
     // Progress
     const tdProg = document.createElement("td");
@@ -480,14 +482,22 @@ function mkBtn(txt, title, fn) {
   b.textContent = txt; b.title = title; b.onclick = fn;
   return b;
 }
-function dateCell(t, field, placeholder) {
+function dateCell(t, field, isParent, derived) {
   const td = document.createElement("td");
+  if (isParent) {
+    // parent dates are auto-derived from children (the gantt ignores any value
+    // set on a parent), so show the derived date as a faded read-only hint.
+    const span = document.createElement("div");
+    span.className = "derived-date";
+    span.textContent = derived || "—";
+    span.title = derived ? "子タスクから自動算出" : "子タスクに日付がありません";
+    td.appendChild(span);
+    return td;
+  }
   const inp = document.createElement("input");
   inp.className = "cell-input";
   inp.type = "date";
   inp.value = t[field] || "";
-  inp.placeholder = placeholder;
-  if (!t[field] && placeholder) inp.title = "（子から自動: " + placeholder + "）";
   inp.oninput = () => { t[field] = inp.value; render(); };
   td.appendChild(inp);
   return td;
@@ -585,9 +595,13 @@ function renderGantt() {
         const ms = document.createElement("div");
         ms.className = "gantt-milestone";
         ms.style.left = (startOff * DAY_W + DAY_W/2 - 8) + "px";
+        ms.title = `${t.name||"(無題)"}\n${t.start}（マイルストーン）`;
         const lbl = document.createElement("div");
-        lbl.className = "label"; lbl.style.left = (startOff*DAY_W + DAY_W) + "px";
+        lbl.className = "gantt-milestone-label";
+        lbl.style.left = (startOff*DAY_W + DAY_W + 2) + "px";
+        lbl.textContent = (t.name||"(無題)") + (t.assignee ? " @"+t.assignee : "");
         row.appendChild(ms);
+        row.appendChild(lbl);
       } else {
         const bar = document.createElement("div");
         bar.className = "gantt-bar" + (isParent ? " summary" : "");
