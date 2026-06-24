@@ -797,7 +797,25 @@ document.getElementById("fileInput").onchange = (e) => { if (e.target.files[0]) 
 document.getElementById("btnClear").onclick = () => {
   if (confirm("すべてのタスクを削除します。よろしいですか？")) { tasks=[]; selectedId=null; render(); }
 };
-// sync gantt vertical scroll roughly with table (optional: keep simple)
+// sync vertical scroll between the table and gantt panes (vertical only;
+// the gantt keeps its independent horizontal scroll)
+(function setupScrollSync() {
+  const tableWrap = document.querySelector(".table-wrap");
+  const ganttWrap = document.getElementById("ganttWrap");
+  let lock = false;
+  function link(from, to) {
+    from.addEventListener("scroll", () => {
+      if (lock) return;
+      lock = true;
+      to.scrollTop = from.scrollTop;
+      // release after the paired scroll event has been dispatched
+      requestAnimationFrame(() => { lock = false; });
+    });
+  }
+  link(tableWrap, ganttWrap);
+  link(ganttWrap, tableWrap);
+})();
+
 document.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
   if (selectedIndex() < 0) return;
