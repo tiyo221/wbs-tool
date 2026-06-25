@@ -617,7 +617,6 @@ function renderGantt() {
         lbl.className = "label";
         lbl.textContent = (t.name||"(無題)") + (t.assignee ? " @"+t.assignee : "") + " " + prog + "%";
         bar.appendChild(lbl);
-        bar.title = `${t.name}\n${t.start||"?"} 〜 ${t.end||"?"} (${dur}日) ${prog}%`;
         row.appendChild(bar);
       }
     }
