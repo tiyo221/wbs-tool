@@ -131,6 +131,21 @@
   .st-done { background: #dcfce7; color: #15803d; }
   .st-hold { background: #fef3c7; color: #b45309; }
 
+  /* 依存関係（先行タスク）セル */
+  .deps-wrap { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; padding: 3px 4px; min-height: 100%; }
+  .dep-chip {
+    background: #e0e7ff; color: #3730a3; border-radius: 8px; padding: 0 6px;
+    font-size: 10px; line-height: 16px; cursor: pointer; font-variant-numeric: tabular-nums;
+  }
+  .dep-chip:hover { background: #c7d2fe; text-decoration: line-through; }
+  .dep-add {
+    border: none; background: transparent; font-family: inherit; font-size: 11px;
+    color: var(--muted); cursor: pointer; padding: 0 2px; max-width: 18px;
+    -webkit-appearance: none; appearance: none;
+  }
+  .dep-add:focus { outline: none; box-shadow: inset 0 0 0 2px var(--accent); border-radius: 4px; }
+  .deps-na { color: var(--muted); padding-left: 6px; }
+
   /* Gantt */
   .gantt-header { display: flex; position: sticky; top: 0; z-index: 20; background: #eaeef3; }
   .gantt-month { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
@@ -233,6 +248,7 @@
         <col data-col="5">
         <col data-col="6">
         <col data-col="7">
+        <col data-col="8">
         <col><!-- 操作列（残り幅を吸収・リサイズ不可） -->
       </colgroup>
       <thead>
@@ -245,6 +261,7 @@
           <th data-col="5">進捗</th>
           <th data-col="6">状態</th>
           <th data-col="7">備考</th>
+          <th data-col="8">先行</th>
           <th></th>
         </tr>
       </thead>
@@ -291,6 +308,7 @@ function load() {
       const d = JSON.parse(raw);
       tasks = d.tasks || [];
       uid = d.uid || (tasks.reduce((m,t)=>Math.max(m,t.id),0) + 1);
+      ensureDeps();
       return true;
     }
   } catch (e) { console.warn(e); }
@@ -300,7 +318,7 @@ function load() {
 /* ---------- helpers ---------- */
 function newTask(level) {
   return { id: uid++, level: level||0, name: "", assignee: "",
-           start: "", end: "", progress: 0, status: "notstarted", note: "", collapsed: false };
+           start: "", end: "", progress: 0, status: "notstarted", note: "", deps: [], collapsed: false };
 }
 function parseDate(s) {
   if (!s) return null;
@@ -398,7 +416,7 @@ function renderTable() {
   const body = document.getElementById("wbsBody");
   body.innerHTML = "";
   if (tasks.length === 0) {
-    body.innerHTML = `<tr><td colspan="9"><div class="empty-state">タスクがありません。「＋ 大項目」またはサンプルから始めましょう。</div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="10"><div class="empty-state">タスクがありません。「＋ 大項目」またはサンプルから始めましょう。</div></td></tr>`;
     return;
   }
   tasks.forEach((t, idx) => {
@@ -515,6 +533,9 @@ function renderTable() {
     tdNote.appendChild(note);
     tr.appendChild(tdNote);
 
+    // 先行（依存）— 葉タスクのみ編集可
+    tr.appendChild(depsCell(t, idx, isParent));
+
     // Row actions
     const tdAct = document.createElement("td");
     tdAct.className = "center";
@@ -558,6 +579,76 @@ function dateCell(t, field, isParent, derived) {
   inp.value = t[field] || "";
   inp.oninput = () => { t[field] = inp.value; render(); };
   td.appendChild(inp);
+  return td;
+}
+
+/* ---------- dependencies (先行タスク) ---------- */
+// すべてのタスクに deps 配列を保証（旧データの後方互換）
+function ensureDeps() {
+  tasks.forEach(t => { if (!Array.isArray(t.deps)) t.deps = []; });
+}
+// predId を currentId の先行に加えると循環するか？
+// = predId が（deps を辿って）currentId に到達できるか
+function depsCreatesCycle(currentId, predId) {
+  const seen = new Set();
+  const stack = [predId];
+  while (stack.length) {
+    const id = stack.pop();
+    if (id === currentId) return true;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const t = tasks.find(x => x.id === id);
+    if (t && Array.isArray(t.deps)) for (const d of t.deps) stack.push(d);
+  }
+  return false;
+}
+function depsCell(t, idx, isParent) {
+  const td = document.createElement("td");
+  if (isParent) {
+    // 親はサマリーのため依存は持たない
+    td.innerHTML = `<span class="deps-na">—</span>`;
+    return td;
+  }
+  const wrap = document.createElement("div");
+  wrap.className = "deps-wrap";
+  (t.deps || []).forEach(pid => {
+    const pidx = tasks.findIndex(x => x.id === pid);
+    if (pidx < 0) return; // 削除済みなどの無効参照はスキップ
+    const chip = document.createElement("span");
+    chip.className = "dep-chip";
+    chip.textContent = wbsNumber(pidx);
+    chip.title = `${wbsNumber(pidx)} ${tasks[pidx].name || "(無題)"} ／ クリックで削除`;
+    chip.onclick = (e) => { e.stopPropagation(); t.deps = (t.deps || []).filter(d => d !== pid); render(); };
+    wrap.appendChild(chip);
+  });
+  // 先行を追加する select（自分・親タスク・循環する相手・追加済みを除外した葉タスク）
+  const sel = document.createElement("select");
+  sel.className = "dep-add cell-select";
+  sel.title = "先行タスクを追加";
+  const opt0 = document.createElement("option");
+  opt0.value = ""; opt0.textContent = "＋";
+  sel.appendChild(opt0);
+  tasks.forEach((o, oi) => {
+    if (o.id === t.id) return;
+    if (hasChildren(oi)) return;
+    if ((t.deps || []).includes(o.id)) return;
+    if (depsCreatesCycle(t.id, o.id)) return;
+    const op = document.createElement("option");
+    op.value = o.id;
+    op.textContent = wbsNumber(oi) + " " + (o.name || "(無題)");
+    sel.appendChild(op);
+  });
+  sel.onclick = (e) => e.stopPropagation();
+  sel.onchange = () => {
+    const pid = Number(sel.value);
+    if (!pid) return;
+    if (depsCreatesCycle(t.id, pid)) { alert("循環参照になるため追加できません。"); return; }
+    if (!Array.isArray(t.deps)) t.deps = [];
+    if (!t.deps.includes(pid)) t.deps.push(pid);
+    render();
+  };
+  wrap.appendChild(sel);
+  td.appendChild(wrap);
   return td;
 }
 
@@ -618,8 +709,12 @@ function renderGantt() {
   const todayOffset = daysBetween(min, today);
 
   // rows
+  const barGeom = {};   // id -> {left, right, y} 描画済みバー/マイルストーンの幾何（矢印用）
+  let vis = 0;          // 可視行インデックス（折りたたみ除外後）
   tasks.forEach((t, idx) => {
     if (isHiddenByCollapse(idx)) return;
+    const rowY = vis * 30 + 15;  // バー中心の y（行高 30px・バー中心 15px）
+    vis++;
     const row = document.createElement("div");
     row.className = "gantt-row" + (t.id === selectedId ? " selected" : "");
     row.style.width = width + "px";
@@ -660,11 +755,14 @@ function renderGantt() {
         lbl.textContent = (t.name||"(無題)") + (t.assignee ? " @"+t.assignee : "");
         row.appendChild(ms);
         row.appendChild(lbl);
+        const cx = startOff * DAY_W + DAY_W/2;
+        barGeom[t.id] = { left: cx - 8, right: cx + 8, y: rowY };
       } else {
         const bar = document.createElement("div");
         bar.className = "gantt-bar" + (isParent ? " summary" : "");
         bar.style.left = (startOff * DAY_W + 2) + "px";
         bar.style.width = (dur * DAY_W - 4) + "px";
+        barGeom[t.id] = { left: startOff * DAY_W + 2, right: (startOff + dur) * DAY_W - 2, y: rowY };
         if (!isParent) {
           const fill = document.createElement("div");
           fill.className = "fill";
@@ -680,6 +778,34 @@ function renderGantt() {
     }
     gbody.appendChild(row);
   });
+
+  // dependency arrows（先行バー終端 → 後続バー始端）— バーの背面に敷く SVG オーバーレイ
+  let arrows = `<defs><marker id="dep-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">`
+             + `<path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8"/></marker></defs>`;
+  let hasArrow = false;
+  tasks.forEach(t => {
+    const b = barGeom[t.id];
+    if (!b || !Array.isArray(t.deps)) return;
+    t.deps.forEach(pid => {
+      const a = barGeom[pid];
+      if (!a) return; // 折りたたみ等で非表示の端点はスキップ
+      const px = a.right, py = a.y, sx = b.left, sy = b.y;
+      const turnX = Math.max(px + 10, sx - 10); // 後続の手前で折れる L 字
+      arrows += `<path d="M ${px} ${py} H ${turnX} V ${sy} H ${sx}" fill="none" `
+              + `stroke="#94a3b8" stroke-width="1.5" marker-end="url(#dep-arrow)"/>`;
+      hasArrow = true;
+    });
+  });
+  if (hasArrow) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("width", width);
+    svg.setAttribute("height", vis * 30);
+    svg.style.position = "absolute";
+    svg.style.left = "0"; svg.style.top = "0";
+    svg.style.pointerEvents = "none";
+    svg.innerHTML = arrows;
+    gbody.insertBefore(svg, gbody.firstChild); // バーより背面（先に描画）に置く
+  }
 
   // today line
   if (todayOffset >= 0 && todayOffset < totalDays) {
@@ -851,7 +977,7 @@ function exportJSON() {
   downloadBlob(blob, "wbs-" + fmtDate(new Date()) + ".json");
 }
 function exportCSV() {
-  const head = ["No","階層","タスク名","担当","開始","終了","進捗%","状態","備考"];
+  const head = ["No","階層","タスク名","担当","開始","終了","進捗%","状態","備考","先行"];
   const lines = [head.join(",")];
   tasks.forEach((t, idx) => {
     const sum = hasChildren(idx) ? summaryOf(idx) : null;
@@ -859,7 +985,10 @@ function exportCSV() {
     const end = t.end || (sum&&sum.maxEnd?fmtDate(sum.maxEnd):"");
     const prog = sum ? sum.progress : t.progress;
     const st = sum ? STATUS[derivedStatus(sum.progress)].label : STATUS[t.status].label;
-    const row = [wbsNumber(idx), t.level, t.name, t.assignee, start, end, prog, st, t.note || ""]
+    const deps = (t.deps || [])
+      .map(pid => { const pi = tasks.findIndex(x => x.id === pid); return pi >= 0 ? wbsNumber(pi) : null; })
+      .filter(Boolean).join(" ");
+    const row = [wbsNumber(idx), t.level, t.name, t.assignee, start, end, prog, st, t.note || "", deps]
       .map(v => `"${String(v).replace(/"/g,'""')}"`);
     lines.push(row.join(","));
   });
@@ -880,6 +1009,7 @@ function importJSON(file) {
       if (!Array.isArray(d.tasks)) throw new Error("形式が不正です");
       tasks = d.tasks;
       uid = d.uid || (tasks.reduce((m,t)=>Math.max(m,t.id),0)+1);
+      ensureDeps();
       selectedId = null; render();
     } catch (e) { alert("読込に失敗しました: " + e.message); }
   };
@@ -892,23 +1022,24 @@ function loadSample() {
   const today = new Date(); today.setHours(0,0,0,0);
   const d = n => fmtDate(addDays(today, n));
   uid = 1;
-  const mk = (level,name,assignee,start,end,progress,status) =>
-    ({ id: uid++, level, name, assignee, start, end, progress, status, collapsed:false });
+  const mk = (level,name,assignee,start,end,progress,status,deps=[]) =>
+    ({ id: uid++, level, name, assignee, start, end, progress, status, note:"", deps, collapsed:false });
+  // id は uid++ で 1..14 の順に振られる（deps はその id を参照）
   tasks = [
-    mk(0,"要件定義","",d(-5),d(3),0,"inprogress"),
-    mk(1,"ヒアリング","佐藤",d(-5),d(-2),100,"done"),
-    mk(1,"要件定義書作成","佐藤",d(-2),d(2),60,"inprogress"),
-    mk(1,"レビュー","鈴木",d(3),d(3),0,"notstarted"),
-    mk(0,"設計","",d(3),d(12),0,"notstarted"),
-    mk(1,"基本設計","田中",d(3),d(7),0,"notstarted"),
-    mk(1,"詳細設計","田中",d(8),d(12),0,"notstarted"),
-    mk(0,"実装","",d(12),d(25),0,"notstarted"),
-    mk(1,"フロントエンド","山田",d(12),d(20),0,"notstarted"),
-    mk(1,"バックエンド","高橋",d(12),d(22),0,"notstarted"),
-    mk(1,"結合","山田",d(23),d(25),0,"notstarted"),
-    mk(0,"テスト・リリース","",d(25),d(30),0,"notstarted"),
-    mk(1,"テスト","鈴木",d(25),d(29),0,"notstarted"),
-    mk(1,"リリース","佐藤",d(30),d(30),0,"notstarted"),
+    mk(0,"要件定義","",d(-5),d(3),0,"inprogress"),                 // 1
+    mk(1,"ヒアリング","佐藤",d(-5),d(-2),100,"done"),               // 2
+    mk(1,"要件定義書作成","佐藤",d(-2),d(2),60,"inprogress",[2]),    // 3 ← 2
+    mk(1,"レビュー","鈴木",d(3),d(3),0,"notstarted",[3]),           // 4 ← 3
+    mk(0,"設計","",d(3),d(12),0,"notstarted"),                      // 5
+    mk(1,"基本設計","田中",d(3),d(7),0,"notstarted",[4]),           // 6 ← 4
+    mk(1,"詳細設計","田中",d(8),d(12),0,"notstarted",[6]),          // 7 ← 6
+    mk(0,"実装","",d(12),d(25),0,"notstarted"),                     // 8
+    mk(1,"フロントエンド","山田",d(12),d(20),0,"notstarted",[7]),   // 9 ← 7
+    mk(1,"バックエンド","高橋",d(12),d(22),0,"notstarted",[7]),     // 10 ← 7
+    mk(1,"結合","山田",d(23),d(25),0,"notstarted",[9,10]),          // 11 ← 9,10
+    mk(0,"テスト・リリース","",d(25),d(30),0,"notstarted"),         // 12
+    mk(1,"テスト","鈴木",d(25),d(29),0,"notstarted",[11]),          // 13 ← 11
+    mk(1,"リリース","佐藤",d(30),d(30),0,"notstarted",[13]),        // 14 ← 13
   ];
   selectedId = null; render();
 }
@@ -934,7 +1065,7 @@ document.getElementById("btnClear").onclick = () => {
 /* ---------- 列幅のドラッグリサイズ ---------- */
 // 操作列（最後）はリサイズ対象外。残り幅を吸収する可変列として扱う。
 const COLW_KEY = "wbs-tool-colwidths-v1";
-const DEFAULT_COL_WIDTHS = [46, 220, 70, 88, 88, 52, 84, 150];
+const DEFAULT_COL_WIDTHS = [46, 220, 70, 88, 88, 52, 84, 150, 110];
 const MIN_COL_W = 36;
 
 function loadColWidths() {
