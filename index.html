@@ -162,6 +162,21 @@
   .hint { font-size: 11px; color: var(--muted); padding: 6px 10px; }
   .row-actions { display: flex; gap: 2px; justify-content: center; }
   .row-actions button { padding: 2px 5px; font-size: 11px; line-height: 1; }
+
+  /* Undo toast */
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    background: #1f2937; color: #fff; padding: 10px 14px; border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.25); display: flex; align-items: center; gap: 12px;
+    font-size: 13px; z-index: 100; opacity: 0; pointer-events: none;
+    transition: opacity .15s, transform .15s;
+  }
+  .toast.show { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+  .toast button {
+    background: transparent; color: #93c5fd; border: 1px solid #3b82f6;
+    padding: 4px 10px; font-size: 12px; font-weight: 600;
+  }
+  .toast button:hover { background: #3b82f6; color: #fff; }
 </style>
 </head>
 <body>
@@ -217,6 +232,11 @@
   </div>
 </div>
 
+<div id="toast" class="toast">
+  <span id="toastMsg"></span>
+  <button id="toastUndo">元に戻す</button>
+</div>
+
 <script>
 "use strict";
 const STORAGE_KEY = "wbs-tool-data-v1";
@@ -231,6 +251,8 @@ const STATUS = {
 let tasks = [];        // {id, level, name, assignee, start, end, progress, status, collapsed}
 let selectedId = null;
 let uid = 1;
+let lastDeleted = null; // 直前の削除内容 { index, block } — Undo 用
+let toastTimer = null;
 
 /* ---------- persistence ---------- */
 function save() {
@@ -656,6 +678,19 @@ function setSelected(id) {
     .forEach(el => el.classList.add('selected'));
 }
 
+/* ---------- toast (Undo) ---------- */
+function showToast(msg) {
+  const el = document.getElementById("toast");
+  document.getElementById("toastMsg").textContent = msg;
+  el.classList.add("show");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { hideToast(); lastDeleted = null; }, 8000);
+}
+function hideToast() {
+  document.getElementById("toast").classList.remove("show");
+  if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+}
+
 /* ---------- operations ---------- */
 function selectedIndex() {
   if (selectedId == null) return -1;
@@ -691,8 +726,21 @@ function deleteTask(idx) {
   const [s, e] = childrenRange(idx);
   const count = e - idx;
   if (count > 1 && !confirm(`このタスクと子タスク${count-1}件を削除します。よろしいですか？`)) return;
-  tasks.splice(idx, count);
+  const removed = tasks.splice(idx, count);
   selectedId = null; render();
+  // 削除内容を保持して「元に戻す」を提示（直前の1回分のみ）
+  lastDeleted = { index: idx, block: removed };
+  showToast(count > 1 ? `${count}件のタスクを削除しました` : `「${removed[0].name||"(無題)"}」を削除しました`);
+}
+function undoDelete() {
+  if (!lastDeleted) return;
+  const { index, block } = lastDeleted;
+  const at = Math.min(index, tasks.length);
+  tasks.splice(at, 0, ...block);
+  selectedId = block[0].id;
+  lastDeleted = null;
+  hideToast();
+  render();
 }
 function indent() {
   const idx = selectedIndex();
@@ -812,6 +860,7 @@ document.getElementById("btnOutdent").onclick = outdent;
 document.getElementById("btnUp").onclick = moveUp;
 document.getElementById("btnDown").onclick = moveDown;
 document.getElementById("btnDelete").onclick = () => deleteTask(selectedIndex());
+document.getElementById("toastUndo").onclick = undoDelete;
 document.getElementById("btnExport").onclick = exportJSON;
 document.getElementById("btnCsv").onclick = exportCSV;
 document.getElementById("btnSample").onclick = loadSample;
