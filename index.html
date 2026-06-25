@@ -168,6 +168,9 @@
   .empty-state { padding: 40px; text-align: center; color: var(--muted); }
   .stats { font-size: 12px; color: #cbd5e1; display: flex; gap: 14px; align-items: center; }
   .stats b { color: #fff; }
+  .stat-status { display: flex; gap: 6px; align-items: center; }
+  .stat-status .status-pill { font-size: 11px; white-space: nowrap; }
+  .stat-status .sp-pct { opacity: .7; margin-left: 3px; }
   input[type=file] { display: none; }
   .hint { font-size: 11px; color: var(--muted); padding: 6px 10px; }
   .row-actions { display: flex; gap: 2px; justify-content: center; }
@@ -206,6 +209,7 @@
   <div class="stats">
     <span>タスク <b id="statCount">0</b></span>
     <span>進捗 <b id="statProgress">0%</b></span>
+    <span class="stat-status" id="statStatus" title="葉タスクのステータス別 件数（割合）"></span>
   </div>
   <div class="toolbar">
     <button class="ghost" id="btnExport">JSON出力</button>
@@ -712,6 +716,18 @@ function renderStats() {
   });
   const p = sumDur>0?Math.round(sumDone/sumDur*100):0;
   document.getElementById("statProgress").textContent = p + "%";
+
+  // ステータス別集計（葉タスクのみ・手動 status を基準に件数と割合を表示）
+  const counts = {};
+  Object.keys(STATUS).forEach(k => counts[k] = 0);
+  leaves.forEach(t => { if (counts[t.status] != null) counts[t.status]++; });
+  const total = leaves.length;
+  const el = document.getElementById("statStatus");
+  el.innerHTML = Object.entries(STATUS).map(([k,v]) => {
+    const c = counts[k];
+    const pct = total > 0 ? Math.round(c/total*100) : 0;
+    return `<span class="status-pill ${v.cls}">${v.label} ${c}<span class="sp-pct">${pct}%</span></span>`;
+  }).join("");
 }
 
 /* 行選択: テーブル全再描画を避け、選択クラスの付け替えのみ行う（編集中のフォーカス維持のため） */
