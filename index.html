@@ -219,6 +219,7 @@
           <th style="width:88px">終了</th>
           <th style="width:52px">進捗</th>
           <th style="width:84px">状態</th>
+          <th style="width:150px">備考</th>
           <th style="width:54px"></th>
         </tr>
       </thead>
@@ -248,7 +249,7 @@ const STATUS = {
   hold:       { label: "保留",   cls: "st-hold" },
 };
 
-let tasks = [];        // {id, level, name, assignee, start, end, progress, status, collapsed}
+let tasks = [];        // {id, level, name, assignee, start, end, progress, status, note, collapsed}
 let selectedId = null;
 let uid = 1;
 let lastDeleted = null; // 直前の削除内容 { index, block } — Undo 用
@@ -274,7 +275,7 @@ function load() {
 /* ---------- helpers ---------- */
 function newTask(level) {
   return { id: uid++, level: level||0, name: "", assignee: "",
-           start: "", end: "", progress: 0, status: "notstarted", collapsed: false };
+           start: "", end: "", progress: 0, status: "notstarted", note: "", collapsed: false };
 }
 function parseDate(s) {
   if (!s) return null;
@@ -372,7 +373,7 @@ function renderTable() {
   const body = document.getElementById("wbsBody");
   body.innerHTML = "";
   if (tasks.length === 0) {
-    body.innerHTML = `<tr><td colspan="8"><div class="empty-state">タスクがありません。「＋ 大項目」またはサンプルから始めましょう。</div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="9"><div class="empty-state">タスクがありません。「＋ 大項目」またはサンプルから始めましょう。</div></td></tr>`;
     return;
   }
   tasks.forEach((t, idx) => {
@@ -478,6 +479,16 @@ function renderTable() {
       tdSt.appendChild(sel);
     }
     tr.appendChild(tdSt);
+
+    // Note (備考)
+    const tdNote = document.createElement("td");
+    const note = document.createElement("input");
+    note.className = "cell-input";
+    note.value = t.note || "";
+    note.placeholder = "メモ";
+    note.oninput = () => { t.note = note.value; save(); };
+    tdNote.appendChild(note);
+    tr.appendChild(tdNote);
 
     // Row actions
     const tdAct = document.createElement("td");
@@ -803,7 +814,7 @@ function exportJSON() {
   downloadBlob(blob, "wbs-" + fmtDate(new Date()) + ".json");
 }
 function exportCSV() {
-  const head = ["No","階層","タスク名","担当","開始","終了","進捗%","状態"];
+  const head = ["No","階層","タスク名","担当","開始","終了","進捗%","状態","備考"];
   const lines = [head.join(",")];
   tasks.forEach((t, idx) => {
     const sum = hasChildren(idx) ? summaryOf(idx) : null;
@@ -811,7 +822,7 @@ function exportCSV() {
     const end = t.end || (sum&&sum.maxEnd?fmtDate(sum.maxEnd):"");
     const prog = sum ? sum.progress : t.progress;
     const st = sum ? STATUS[derivedStatus(sum.progress)].label : STATUS[t.status].label;
-    const row = [wbsNumber(idx), t.level, t.name, t.assignee, start, end, prog, st]
+    const row = [wbsNumber(idx), t.level, t.name, t.assignee, start, end, prog, st, t.note || ""]
       .map(v => `"${String(v).replace(/"/g,'""')}"`);
     lines.push(row.join(","));
   });
