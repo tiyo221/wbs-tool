@@ -359,7 +359,7 @@ function renderTable() {
     tr.dataset.id = t.id;
     tr.dataset.level = t.level;
     if (t.id === selectedId) tr.classList.add("selected");
-    tr.onclick = () => { selectedId = t.id; renderTable(); renderGantt(); };
+    tr.onclick = () => setSelected(t.id);
 
     const summary = summaryOf(idx);
     const isParent = hasChildren(idx);
@@ -566,7 +566,7 @@ function renderGantt() {
     row.className = "gantt-row" + (t.id === selectedId ? " selected" : "");
     row.style.width = width + "px";
     row.dataset.id = t.id;
-    row.onclick = () => { selectedId = t.id; renderTable(); renderGantt(); };
+    row.onclick = () => setSelected(t.id);
 
     // background day cells (weekend shading)
     for (let i = 0; i < totalDays; i++) {
@@ -645,6 +645,16 @@ function renderStats() {
   });
   const p = sumDur>0?Math.round(sumDone/sumDur*100):0;
   document.getElementById("statProgress").textContent = p + "%";
+}
+
+/* 行選択: テーブル全再描画を避け、選択クラスの付け替えのみ行う（編集中のフォーカス維持のため） */
+function setSelected(id) {
+  if (selectedId === id) return;
+  selectedId = id;
+  document.querySelectorAll('#wbsBody tr.selected, #ganttBody .gantt-row.selected')
+    .forEach(el => el.classList.remove('selected'));
+  document.querySelectorAll(`#wbsBody tr[data-id="${id}"], #ganttBody .gantt-row[data-id="${id}"]`)
+    .forEach(el => el.classList.add('selected'));
 }
 
 /* ---------- operations ---------- */
