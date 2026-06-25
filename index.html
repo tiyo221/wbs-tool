@@ -633,6 +633,20 @@ function renderGantt() {
   }
 }
 
+// 初回ロード時のみ、ガントの横スクロールを「今日」がビュー中央に来る位置へ合わせる。
+// 今日が描画範囲外でも、clamp により先頭/末尾で破綻しないようにする。
+function centerGanttToday() {
+  if (tasks.length === 0) return;
+  const wrap = document.getElementById("ganttWrap");
+  const [min, max] = dateRange();
+  const totalDays = daysBetween(min, max) + 1;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayOffset = daysBetween(min, today);
+  const todayCenterX = todayOffset * DAY_W + DAY_W/2;
+  const maxScroll = Math.max(0, totalDays * DAY_W - wrap.clientWidth);
+  wrap.scrollLeft = Math.max(0, Math.min(todayCenterX - wrap.clientWidth/2, maxScroll));
+}
+
 function renderStats() {
   document.getElementById("statCount").textContent = tasks.length;
   const leaves = tasks.filter((_,i)=>!hasChildren(i));
@@ -849,6 +863,8 @@ document.addEventListener("keydown", (e) => {
 /* ---------- init ---------- */
 if (!load()) loadSample();
 render();
+// レイアウト確定後に初回だけ「今日」を中央表示（以降の編集では再センタリングしない）
+requestAnimationFrame(centerGanttToday);
 </script>
 </body>
 </html>
