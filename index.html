@@ -82,6 +82,9 @@
     color: var(--muted);
     font-size: 11px;
     padding: 4px 6px;
+    /* ガントのヘッダー（月行21px + 日行30px = 51px）と高さを揃え、
+       テーブル本文とガント本文の開始位置を一致させる（行の縦ずれ防止） */
+    height: 51px;
     text-align: center;
     position: sticky;
     top: 0;
@@ -98,7 +101,10 @@
   .col-resizer:hover { background: var(--accent); opacity: .5; }
   body.col-resizing { cursor: col-resize; }
   body.col-resizing * { cursor: col-resize !important; user-select: none !important; }
-  tbody td { font-size: 12px; overflow: hidden; }
+  /* 行高はガントの行（30px）に固定し、左右ペインの行を一致させる。
+     内容がはみ出す場合はクリップする（先行セルは折り返さないことで対応）。 */
+  tbody tr { height: 30px; }
+  tbody td { font-size: 12px; overflow: hidden; max-height: 30px; }
   tbody tr:hover { background: var(--row-hover); }
   tbody tr.selected { background: #dbeafe !important; }
   .cell-input, .cell-select {
@@ -132,7 +138,9 @@
   .st-hold { background: #fef3c7; color: #b45309; }
 
   /* 依存関係（先行タスク）セル */
-  .deps-wrap { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; padding: 3px 4px; min-height: 100%; }
+  /* 折り返すと行高が伸びてガントとずれるため 1 行に固定し、はみ出しはクリップ。
+     先行が多い場合は列幅（ドラッグでリサイズ可）を広げて確認する。 */
+  .deps-wrap { display: flex; flex-wrap: nowrap; gap: 3px; align-items: center; padding: 3px 4px; overflow: hidden; }
   .dep-chip {
     background: #e0e7ff; color: #3730a3; border-radius: 8px; padding: 0 6px;
     font-size: 10px; line-height: 16px; cursor: pointer; font-variant-numeric: tabular-nums;
