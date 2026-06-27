@@ -7,7 +7,6 @@
 HTMLだけで動くWBS（Work Breakdown Structure）/ ガントチャートツール。
 `index.html` をブラウザで開くだけで動作する。サーバー・ビルド・パッケージ管理・依存ライブラリは一切なし。
 
-- リポジトリ: `tiyo221/wbs-tool`（**private**）
 - 主要ファイル: [`index.html`](index.html) — HTML/CSS/JS をすべて内包した単一ファイル
 - データ永続化: ブラウザの `localStorage`（キー: `wbs-tool-data-v1`）。外部送信は行わない。
 
