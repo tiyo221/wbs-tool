@@ -501,8 +501,13 @@ function renderTable() {
         t.progress = v;
         if (v === 100) t.status = "done";
         else if (v > 0 && t.status === "notstarted") t.status = "inprogress";
-        renderTable(); renderGantt(); save();
+        // 入力中は renderTable() を呼ばない（入力欄が作り直されフォーカスを失うため）。
+        // 自分のバーとガントだけ即時更新し、親サマリー・状態セルは確定時(onchange)に反映する。
+        const fill = bg.querySelector(".progress-bar-fill");
+        if (fill) fill.style.width = v + "%";
+        renderGantt(); save();
       };
+      pin.onchange = () => { renderTable(); renderGantt(); save(); };
       tdProg.appendChild(pin);
     }
     tr.appendChild(tdProg);
