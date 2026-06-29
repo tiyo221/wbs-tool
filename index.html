@@ -590,7 +590,10 @@ function dateCell(t, field, isParent, derived) {
   inp.className = "cell-input";
   inp.type = "date";
   inp.value = t[field] || "";
-  inp.oninput = () => { t[field] = inp.value; render(); };
+  // 入力中は renderTable() を呼ばない（入力欄が作り直されフォーカス／カレンダー操作を失うため）。
+  // dd の2桁目入力やカレンダーの月送りを妨げないよう、確定時(onchange)にだけフル render() する。
+  inp.oninput = () => { t[field] = inp.value; renderGantt(); save(); };
+  inp.onchange = () => { t[field] = inp.value; render(); };
   td.appendChild(inp);
   return td;
 }
